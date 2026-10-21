@@ -113,7 +113,10 @@
 
     .wish-form { grid-template-columns: repeat(4, 1fr); margin-bottom: 8px; }
     .wish-form .wide { grid-column: span 2; }
-    .wish-form .primary.wide { grid-column: 1 / -1; }
+    .wish-form .primary.wide, .wish-form .full-row { grid-column: 1 / -1; }
+    .autofill-note { margin: -2px 0 2px; font-size: 0.85rem; color: var(--muted); }
+    .autofill-note:empty { display: none; }
+    .autofilled { box-shadow: inset 0 0 0 1px var(--accent); }
     @media (max-width: 760px) {
       .wish-form { grid-template-columns: 1fr 1fr; }
       .wish-form .wide { grid-column: 1 / -1; }
@@ -238,12 +241,14 @@
         <h2 id="wishlist-title">Wishlist</h2>
         <p class="muted">Pieces to buy. Once one is bought, move it into the wardrobe.</p>
         <form id="add-wish" class="add-form wish-form">
+          <input class="full-row" id="wish-link" type="url" placeholder="Paste a product link (Nordstrom, Max Mara, The Row…) to fill in the details" aria-label="Product link">
+          <p class="full-row autofill-note" id="autofill-note" aria-live="polite"></p>
           <input class="wide" id="wish-name" placeholder="Piece (e.g. Camel coat)" aria-label="Wishlist piece name" autocomplete="off">
-          <input id="wish-designer" placeholder="Designer" aria-label="Designer" autocomplete="off">
+          <input class="wide" id="wish-designer" placeholder="Designer" aria-label="Designer" autocomplete="off">
           <select id="wish-category" aria-label="Category"></select>
+          <input id="wish-size" placeholder="Size (optional)" aria-label="Size" autocomplete="off">
           <input id="wish-price" type="number" min="0" step="0.01" placeholder="Price (optional)" aria-label="Price">
-          <input id="wish-link" type="url" placeholder="Product link (e.g. Nordstrom page)" aria-label="Product link">
-          <input class="wide" id="wish-image" type="url" placeholder="Image link (optional)" aria-label="Image link">
+          <input id="wish-image" type="url" placeholder="Image link (optional)" aria-label="Image link">
           <button class="primary wide" type="submit">Add to wishlist</button>
         </form>
         <ul id="wishlist"></ul>
@@ -364,7 +369,8 @@
       name.textContent = item.name;
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = [item.designer, item.category, item.price != null ? formatPrice(item.price) : ""]
+      meta.textContent = [item.designer, item.category, item.size ? "Size " + item.size : "",
+        item.price != null ? formatPrice(item.price) : ""]
         .filter(Boolean).join(" · ");
       text.append(name, meta);
 
@@ -641,15 +647,163 @@
         name,
         designer: $("wish-designer").value.trim(),
         category: $("wish-category").value,
+        size: $("wish-size").value.trim(),
         price: Number.isFinite(price) && price >= 0 ? price : null,
         image: $("wish-image").value.trim(),
         link: $("wish-link").value.trim()
       });
       saveState();
-      $("add-wish").reset();
-      $("wish-name").focus();
+      resetWishForm();
+      $("wish-link").focus();
       renderWishlist();
     });
+
+    // ---- Autofill from a product link ----
+    // Reads only the link text itself (no page fetch): store links carry the designer and
+    // piece name in the URL slug, and sometimes the size as a query parameter.
+
+    // Single-brand store domains: the designer is the store itself
+    const BRAND_SITES = {
+      "maxmara.com": "Max Mara",
+      "therow.com": "The Row",
+      "toteme-studio.com": "Toteme",
+      "toteme.com": "Toteme",
+      "lafayette148ny.com": "Lafayette 148 New York",
+      "quince.com": "Quince"
+    };
+
+    // Designers recognised at the start of a multi-brand store's slug (e.g. Nordstrom), longest first
+    const KNOWN_DESIGNERS = [
+      "Lafayette 148 New York", "Lafayette 148", "Max Mara", "Weekend Max Mara", "'S Max Mara", "The Row",
+      "Toteme", "Quince", "Vince", "Theory", "Eileen Fisher", "St. John", "Veronica Beard", "Frame",
+      "Agolde", "Khaite", "Staud", "Ganni", "Acne Studios", "Tory Burch", "Kate Spade New York",
+      "Madewell", "Reformation", "Nili Lotan", "Joseph", "Equipment", "Mejuri", "Gucci",
+      "Prada", "Saint Laurent", "Loewe", "Jil Sander", "Brunello Cucinelli", "Loro Piana", "Ugg",
+      "Nike", "Sam Edelman", "Stuart Weitzman", "Cole Haan", "Nordstrom", "Halogen", "Caslon"
+    ].sort((a, b) => b.length - a.length);
+
+    // Last matching word wins, since the garment noun usually ends the name ("Shirt Dress" is a Dress)
+    const CATEGORY_WORDS = {
+      Outerwear: ["coat", "jacket", "blazer", "trench", "parka", "cape", "puffer", "anorak", "peacoat", "overcoat"],
+      Bottom: ["pant", "pants", "trouser", "trousers", "jean", "jeans", "skirt", "short", "shorts", "legging", "leggings", "culotte", "culottes"],
+      Dress: ["dress", "gown", "jumpsuit", "romper", "caftan", "kaftan"],
+      Shoes: ["shoe", "shoes", "boot", "boots", "bootie", "booties", "loafer", "loafers", "sneaker", "sneakers", "pump", "pumps",
+        "sandal", "sandals", "mule", "mules", "flat", "flats", "heel", "heels", "slingback", "slingbacks", "espadrille", "espadrilles"],
+      Accessory: ["bag", "tote", "clutch", "scarf", "belt", "earring", "earrings", "necklace", "bracelet", "ring", "hat", "beanie",
+        "sunglasses", "wallet", "crossbody", "hoops", "gloves", "wrap"],
+      Top: ["top", "sweater", "shirt", "blouse", "tee", "t-shirt", "crewneck", "cardigan", "tank", "turtleneck", "pullover",
+        "polo", "camisole", "cami", "bodysuit", "knit", "henley", "hoodie", "sweatshirt", "vest"]
+    };
+
+    const slugWords = text => text.toLowerCase().split(/[-_+\s]+/).filter(Boolean);
+    const titleCase = words => words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+
+    function guessCategory(words) {
+      let found = null;
+      for (const word of words) {
+        for (const [cat, list] of Object.entries(CATEGORY_WORDS)) {
+          if (list.includes(word)) found = cat;
+        }
+      }
+      return found;
+    }
+
+    function parseProductLink(text) {
+      let url;
+      try {
+        url = new URL(text.trim());
+      } catch {
+        return null;
+      }
+      if (!/^https?:$/.test(url.protocol)) return null;
+
+      const host = url.hostname.replace(/^www\./, "");
+      const brandKey = Object.keys(BRAND_SITES).find(d => host === d || host.endsWith("." + d));
+
+      // The slug is the path segment with the most words, e.g. "max-mara-manuela-camel-hair-wrap-coat"
+      const segments = url.pathname.split("/").map(s => decodeURIComponent(s).replace(/\.html?$/i, ""));
+      const slug = segments
+        .filter(s => /[a-z]/i.test(s) && s.includes("-"))
+        .sort((a, b) => slugWords(b).length - slugWords(a).length)[0] || "";
+
+      // Drop product codes ("p-1016043106001") but keep short numbers that belong to names ("148")
+      let words = slugWords(slug).filter(w => !/^\d{5,}$/.test(w) && !/^[a-z]?\d{6,}[a-z]?$/.test(w));
+      if (words[0] === "p") words = words.slice(1);
+
+      let designer = brandKey ? BRAND_SITES[brandKey] : "";
+      const startsWith = name => {
+        const parts = slugWords(name.replace(/[.']/g, ""));
+        return parts.length <= words.length && parts.every((p, i) => words[i] === p) ? parts.length : 0;
+      };
+      for (const name of brandKey ? [designer] : KNOWN_DESIGNERS) {
+        const n = startsWith(name);
+        if (n) {
+          designer = name;
+          words = words.slice(n);
+          break;
+        }
+      }
+
+      const params = url.searchParams;
+      const size = params.get("size") || params.get("sz") || params.get("selectedSize") || "";
+
+      return {
+        name: titleCase(words),
+        designer,
+        category: guessCategory(words),
+        size: size.toUpperCase().length <= 4 ? size.toUpperCase() : size
+      };
+    }
+
+    // Fills only fields the user hasn't typed in, and says what it did
+    function autofillFromLink() {
+      const note = $("autofill-note");
+      const link = $("wish-link").value.trim();
+      if (!link) {
+        note.textContent = "";
+        return;
+      }
+      const info = parseProductLink(link);
+      if (!info || (!info.name && !info.designer)) {
+        note.textContent = "Couldn't read details from this link. Fill them in below.";
+        return;
+      }
+
+      const filled = [];
+      const fill = (id, value, label) => {
+        const field = $(id);
+        if (!value || field.dataset.typed) return;
+        field.value = value;
+        field.classList.add("autofilled");
+        filled.push(label);
+      };
+      fill("wish-name", info.name, "name");
+      fill("wish-designer", info.designer, "designer");
+      fill("wish-category", info.category, "category");
+      fill("wish-size", info.size, "size");
+
+      note.textContent = filled.length
+        ? `Filled in ${filled.join(", ")} from the link. Check them, then add price and photo.`
+        : "Nothing new to fill in from this link.";
+    }
+
+    // A field the user edits by hand is never overwritten by autofill
+    for (const id of ["wish-name", "wish-designer", "wish-category", "wish-size"]) {
+      $(id).addEventListener("input", () => {
+        $(id).dataset.typed = "1";
+        $(id).classList.remove("autofilled");
+      });
+    }
+    $("wish-link").addEventListener("input", autofillFromLink);
+
+    function resetWishForm() {
+      $("add-wish").reset();
+      $("autofill-note").textContent = "";
+      for (const id of ["wish-name", "wish-designer", "wish-category", "wish-size"]) {
+        delete $(id).dataset.typed;
+        $(id).classList.remove("autofilled");
+      }
+    }
 
     // Loads a piece into the add form; submitting then saves changes instead of adding
     function startEdit(item) {

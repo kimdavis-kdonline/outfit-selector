@@ -22,7 +22,7 @@ state = {
     id, name,
     items: [{ id, name, designer, category, price | null, image }],
     looks: [{ id, itemIds: [itemId...], picked: boolean }],
-    wishlist: [{ id, name, designer, category, price | null, image, link }]   // pieces to buy
+    wishlist: [{ id, name, designer, category, size, price | null, image, link }]   // pieces to buy
   }]
 }
 ```
@@ -37,6 +37,11 @@ Categories: Top, Bottom, Dress, Outerwear, Shoes, Accessory.
 - **Wishlist** pieces (per profile) are kept out of the wardrobe, so Style me never uses them.
   "View" opens the product link (http(s) only) in a new tab. "Move to wardrobe" moves the piece,
   details and link included, into `items`. Profiles saved before the wishlist existed get `wishlist: []` on load.
+- **Autofill from product link** (`parseProductLink`): reads only the URL text, never fetches the page
+  (a static page can't read other sites, and retailers block bots). Designer comes from `BRAND_SITES`
+  (single-brand domains) or a `KNOWN_DESIGNERS` prefix of the slug (Nordstrom); name is the rest of the
+  slug; category from the last garment word (`CATEGORY_WORDS`); size from `?size=`. It fills only
+  fields the user hasn't typed in. Price, photo and stock status would need a server function.
 - The placeholder test pieces in the browser are intentional during design testing. Don't clear them.
 - User text is always rendered with `textContent`, never `innerHTML`.
 - Image links render only for `http(s)` URLs; a broken link falls back to a lettered placeholder tile.
