@@ -199,6 +199,41 @@
       margin-bottom: 4px;
     }
 
+    .import-banner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding: 14px 16px;
+      background: var(--card);
+      border: 2px solid var(--accent);
+      border-radius: 12px;
+    }
+    .import-banner[hidden] { display: none; }
+    .import-banner .actions { margin-top: 0; }
+    #import-thumb .thumb { width: 64px; height: 64px; }
+
+    #setup summary { cursor: pointer; list-style: none; }
+    #setup summary::-webkit-details-marker { display: none; }
+    #setup summary h2 { display: inline; margin: 0; }
+    #setup summary::after { content: " +"; color: var(--muted); }
+    #setup[open] summary::after { content: " −"; }
+    #setup summary + p { margin-top: 12px; }
+    .steps { margin: 4px 0 8px; padding-left: 20px; line-height: 1.6; }
+    .steps li { margin-bottom: 6px; }
+    .bookmarklet {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: var(--accent-text);
+      text-decoration: none;
+      font-weight: 600;
+      cursor: grab;
+    }
+
     .badge {
       font-size: 0.75rem;
       font-weight: 600;
@@ -225,6 +260,19 @@
         <button type="button" id="delete-profile">Delete</button>
       </div>
     </header>
+
+    <div class="import-banner" id="import-banner" hidden>
+      <div id="import-thumb"></div>
+      <div class="item-text">
+        <div class="item-name" id="import-name"></div>
+        <div class="meta" id="import-meta"></div>
+      </div>
+      <div class="actions">
+        <button class="primary" type="button" id="import-wardrobe">Add to wardrobe</button>
+        <button type="button" id="import-wishlist">Add to wishlist</button>
+        <button type="button" class="edit" id="import-dismiss">Dismiss</button>
+      </div>
+    </div>
 
     <div class="grid">
       <section>
@@ -287,6 +335,41 @@
       <section class="full">
         <h2 id="lookbook-title">Lookbook</h2>
         <div id="lookbook"></div>
+      </section>
+
+      <section class="full">
+        <details id="setup">
+          <summary><h2>Add from any store: browser button</h2></summary>
+          <p class="muted">
+            Save this button in your browser once. Then, on any product page (Nordstrom, Anthropologie,
+            Max Mara, anywhere), tap it and the piece opens here with its photo, name, designer, price,
+            size and store filled in. It reads the page you're already looking at, so it works even on
+            stores that block the app.
+          </p>
+
+          <h3>On a computer (Chrome, Safari, Edge, Firefox)</h3>
+          <ol class="steps">
+            <li>Show your bookmarks bar: <strong>Chrome/Edge</strong> Ctrl+Shift+B (Cmd+Shift+B on Mac),
+              <strong>Safari</strong> View → Show Favorites Bar, <strong>Firefox</strong> View → Toolbars → Bookmarks Toolbar.</li>
+            <li>Drag this button onto the bookmarks bar:
+              <a class="bookmarklet" id="bookmarklet" href="#">+ Outfit Selector</a></li>
+            <li>On any product page, click <strong>+ Outfit Selector</strong> in your bookmarks bar.</li>
+          </ol>
+
+          <h3>On iPhone (Safari)</h3>
+          <ol class="steps">
+            <li><button type="button" id="copy-bookmarklet">Copy button code</button>
+              <span class="muted" id="copy-status" aria-live="polite"></span></li>
+            <li>Tap the <strong>Share</strong> icon → <strong>Add Bookmark</strong>, name it
+              <strong>+ Outfit Selector</strong>, and tap <strong>Save</strong>.</li>
+            <li>Tap the <strong>Bookmarks</strong> icon (open book) → <strong>Edit</strong> → tap
+              <strong>+ Outfit Selector</strong>.</li>
+            <li>Tap the address line under the name, delete everything in it, paste the code, and tap <strong>Done</strong>.</li>
+            <li>On any product page, tap the <strong>address bar</strong>, type <strong>Outfit</strong>, and tap
+              <strong>+ Outfit Selector</strong> in the suggestions (or open it from Bookmarks).</li>
+          </ol>
+          <p class="muted" id="setup-origin"></p>
+        </details>
       </section>
     </div>
   </div>
@@ -879,7 +962,7 @@
     }
 
     // Step 1, instant: read what the link text itself says
-    function autofillFromLink(prefix) {
+    function autofillFromLink(prefix, { lookup = true } = {}) {
       const link = $(`${prefix}-link`).value.trim();
       if (!link) {
         setNote(prefix, "local", "");
@@ -898,7 +981,7 @@
           ? `Filled in ${filled.join(", ")} from the link. Check them before saving.`
           : "Nothing new to fill in from this link.");
       }
-      if (parsed) scheduleLookup(prefix, link);
+      if (parsed && lookup) scheduleLookup(prefix, link);
     }
 
     // ---- Step 2: product photo and price from the store's page, via /api/product ----
@@ -1051,6 +1134,162 @@
       renderPhotoPreview(prefix);
     }
 
+    // ---- "+ Outfit Selector" browser button (bookmarklet) ----
+    // grabProduct runs on the STORE's page, in the user's own browser, so stores that block
+    // /api/product still work. It is turned into a one-line javascript: link, so it must keep
+    // explicit semicolons, use no line comments and no percent signs inside.
+    function grabProduct(appOrigin) {
+      const meta = name => {
+        const el = document.querySelector(`meta[property="${name}"],meta[name="${name}"],meta[itemprop="${name}"]`);
+        return el ? (el.content || "").trim() : "";
+      };
+      const findProduct = node => {
+        if (!node || typeof node !== "object") return null;
+        if (Array.isArray(node)) {
+          for (const child of node) { const hit = findProduct(child); if (hit) return hit; }
+          return null;
+        }
+        if (/Product/.test([].concat(node["@type"] || []).join(" "))) return node;
+        return findProduct(node["@graph"]);
+      };
+      let product = {};
+      for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+        try { const hit = findProduct(JSON.parse(script.textContent)); if (hit) { product = hit; break; } } catch (e) {}
+      }
+      const offers = [].concat(product.offers || []).flatMap(o => o && o.offers ? [].concat(o.offers) : [o]);
+      const offer = offers.find(o => o && o.price != null) || offers[0] || {};
+      const ldImage = [].concat(product.image || [])[0];
+      let image = (typeof ldImage === "string" ? ldImage : ldImage && (ldImage.url || ldImage.contentUrl)) ||
+        meta("og:image:secure_url") || meta("og:image") || meta("twitter:image");
+      if (!image) {
+        let best = null;
+        for (const img of document.images) {
+          const area = img.naturalWidth * img.naturalHeight;
+          if (img.naturalWidth >= 300 && img.naturalHeight >= 300 && (!best || area > best.area)) best = { img, area };
+        }
+        image = best ? (best.img.currentSrc || best.img.src) : "";
+      }
+      const brand = product.brand;
+      const data = {
+        v: 1,
+        link: location.href,
+        name: product.name || meta("og:title") || document.title,
+        brand: (typeof brand === "string" ? brand : brand && brand.name) || meta("product:brand") || "",
+        price: String(offer.price != null ? offer.price : offer.lowPrice || meta("product:price:amount") || meta("og:price:amount") || ""),
+        currency: offer.priceCurrency || meta("product:price:currency") || meta("og:price:currency") || "",
+        image: image ? new URL(image, location.href).href : "",
+        store: meta("og:site_name")
+      };
+      window.open(appOrigin + "/\x23add=" + encodeURIComponent(JSON.stringify(data)), "_blank");
+    }
+
+    function bookmarkletCode() {
+      const body = grabProduct.toString().replace(/\s*\n\s*/g, " ");
+      return `javascript:(${body})(${JSON.stringify(location.origin)});void 0`;
+    }
+
+    function setUpBookmarklet() {
+      const link = $("bookmarklet");
+      link.href = bookmarkletCode();
+      // Clicking it here would run it on this page; it's meant to be dragged to the bookmarks bar
+      link.addEventListener("click", event => {
+        event.preventDefault();
+        alert("Drag this button to your bookmarks bar instead of clicking it. Then click it on a store's product page.");
+      });
+      $("copy-bookmarklet").addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(bookmarkletCode());
+          $("copy-status").textContent = "Copied. Now follow step 2.";
+        } catch {
+          prompt("Copy this code:", bookmarkletCode());
+        }
+      });
+      const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+      $("setup-origin").textContent = local
+        ? "You're on a local test copy, so this button would open the local copy. Set it up from the live site instead."
+        : `The button opens this app at ${location.host}.`;
+    }
+
+    // ---- Receiving a piece from the browser button: #add=<JSON> ----
+    let pendingImport = null;
+
+    // Everything in the hash came from another site's page: keep it short, plain text, http(s) only
+    function readImport() {
+      const match = location.hash.match(/^#add=(.+)$/);
+      if (!match) return null;
+      history.replaceState(null, "", location.pathname + location.search);
+      let data;
+      try {
+        data = JSON.parse(decodeURIComponent(match[1]));
+      } catch {
+        return null;
+      }
+      const text = (value, max = 200) => (typeof value === "string" ? value : "").replace(/\s+/g, " ").trim().slice(0, max);
+      const httpUrl = value => /^https?:\/\//i.test(text(value, 2000)) ? text(value, 2000) : "";
+      const link = httpUrl(data.link);
+      if (!link) return null;
+      const currency = text(data.currency, 5).toUpperCase();
+      const price = Number(text(data.price, 20).replace(/[^0-9.]/g, ""));
+
+      const fromLink = parseProductLink(link) || {};
+      const brand = text(data.brand, 80);
+      // Page titles often look like "Maeve Jamie Velvet Halter Midi Dress | Anthropologie"
+      let name = text(data.name).split(/\s+[|–—]\s+|\s+-\s+(?=[^-]*$)/)[0];
+      const designer = brand || fromLink.designer || "";
+      if (designer && name.toLowerCase().startsWith(designer.toLowerCase() + " ")) name = name.slice(designer.length + 1);
+
+      return {
+        link,
+        name: name || fromLink.name || "",
+        designer,
+        store: fromLink.store || text(data.store, 60),
+        price: Number.isFinite(price) && price > 0 && (!currency || currency === "USD") ? price : null,
+        image: httpUrl(data.image)
+      };
+    }
+
+    function showImport() {
+      const data = readImport();
+      if (!data) return;
+      pendingImport = data;
+      $("import-thumb").innerHTML = "";
+      $("import-thumb").append(thumb({ image: data.image, name: data.name, category: "New" }));
+      $("import-name").textContent = data.name || "New piece";
+      $("import-meta").textContent = [data.designer, data.price != null ? formatPrice(data.price) : "",
+        data.store ? "from " + data.store : ""].filter(Boolean).join(" · ");
+      $("import-banner").hidden = false;
+      $("import-banner").scrollIntoView({ block: "start" });
+    }
+
+    // Prefills the chosen form for review; the user still checks it and presses Add
+    function useImport(prefix) {
+      const data = pendingImport;
+      if (!data) return;
+      if (prefix === "item") stopEdit(); else resetWishForm();
+      $(`${prefix}-link`).value = data.link;
+      autofillFromLink(prefix, { lookup: false });
+      fillField(prefix, "name", data.name);
+      fillField(prefix, "designer", data.designer);
+      fillField(prefix, "store", data.store);
+      fillField(prefix, "price", data.price);
+      // Treated like a pasted photo: a later link change won't replace it
+      if (data.image) setPhoto(prefix, data.image, "link");
+      setNote(prefix, "local", "Filled in from the store page. Check the details, then press Add.");
+      setNote(prefix, "photo", data.image ? "" : "No photo found on that page. Paste a photo link or upload one.");
+      dismissImport();
+      $(prefix === "item" ? "add-item" : "add-wish").scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    function dismissImport() {
+      pendingImport = null;
+      $("import-banner").hidden = true;
+    }
+
+    $("import-wardrobe").addEventListener("click", () => useImport("item"));
+    $("import-wishlist").addEventListener("click", () => useImport("wish"));
+    $("import-dismiss").addEventListener("click", dismissImport);
+    window.addEventListener("hashchange", showImport);
+
     function resetWishForm() {
       $("add-wish").reset();
       resetAutofill("wish");
@@ -1201,6 +1440,8 @@
     });
 
     renderAll();
+    setUpBookmarklet();
+    showImport();
   </script>
 </body>
 </html>

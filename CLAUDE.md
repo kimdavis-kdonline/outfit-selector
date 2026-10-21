@@ -43,6 +43,13 @@ Categories: Top, Bottom, Dress, Outerwear, Shoes, Accessory.
 - **Store support for the photo lookup**: works for The Row, Quince, Toteme and other Shopify-type stores;
   Nordstrom (Akamai), Anthropologie, Amazon, Max Mara, Lafayette 148 and Saks block it, and the app tells the user to
   paste the photo address or upload instead.
+- **"+ Outfit Selector" browser button** (bookmarklet, set up from the "Add from any store" section):
+  `grabProduct()` runs on the store's page in the user's own browser, so it works on stores that block
+  `/api/product` (tested: Nordstrom, Anthropologie). It reads JSON-LD Product / og: tags (fallback: the
+  largest image) and opens the app at `/#add=<JSON>`. The app treats that data as untrusted (http(s)
+  only, length caps, text only), shows a banner, and on "Add to wardrobe/wishlist" prefills the form for
+  review; the photo counts as user-provided. `grabProduct` is serialized with `.toString()` into a
+  one-line `javascript:` link: no `//` comments, no `%`, no literal `#`, explicit semicolons.
 - **View** asks `/api/product` first; if the product is gone (404, redirect home, or out of stock) it opens
   the store's home page instead.
 - **Edit** loads a piece into the add form ("Save changes" / "Cancel"); edits show up everywhere the
