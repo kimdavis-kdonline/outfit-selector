@@ -245,10 +245,11 @@
           <p class="full-row autofill-note" id="autofill-note" aria-live="polite"></p>
           <input class="wide" id="wish-name" placeholder="Piece (e.g. Camel coat)" aria-label="Wishlist piece name" autocomplete="off">
           <input class="wide" id="wish-designer" placeholder="Designer" aria-label="Designer" autocomplete="off">
+          <input class="wide" id="wish-store" placeholder="Store (e.g. Nordstrom, Amazon, brand site)" aria-label="Store" autocomplete="off">
           <select id="wish-category" aria-label="Category"></select>
           <input id="wish-size" placeholder="Size (optional)" aria-label="Size" autocomplete="off">
-          <input id="wish-price" type="number" min="0" step="0.01" placeholder="Price (optional)" aria-label="Price">
-          <input id="wish-image" type="url" placeholder="Image link (optional)" aria-label="Image link">
+          <input class="wide" id="wish-price" type="number" min="0" step="0.01" placeholder="Price (optional)" aria-label="Price">
+          <input class="wide" id="wish-image" type="url" placeholder="Image link (optional)" aria-label="Image link">
           <button class="primary wide" type="submit">Add to wishlist</button>
         </form>
         <ul id="wishlist"></ul>
@@ -370,7 +371,7 @@
       const meta = document.createElement("div");
       meta.className = "meta";
       meta.textContent = [item.designer, item.category, item.size ? "Size " + item.size : "",
-        item.price != null ? formatPrice(item.price) : ""]
+        item.price != null ? formatPrice(item.price) : "", item.store ? "at " + item.store : ""]
         .filter(Boolean).join(" · ");
       text.append(name, meta);
 
@@ -648,6 +649,7 @@
         designer: $("wish-designer").value.trim(),
         category: $("wish-category").value,
         size: $("wish-size").value.trim(),
+        store: $("wish-store").value.trim(),
         price: Number.isFinite(price) && price >= 0 ? price : null,
         image: $("wish-image").value.trim(),
         link: $("wish-link").value.trim()
@@ -671,6 +673,32 @@
       "lafayette148ny.com": "Lafayette 148 New York",
       "quince.com": "Quince"
     };
+
+    // Where to buy: brand sites sell their own label; the rest are multi-brand stores.
+    // An unrecognised domain leaves Store blank for the user to fill in.
+    const STORE_SITES = {
+      ...BRAND_SITES,
+      "nordstrom.com": "Nordstrom",
+      "nordstromrack.com": "Nordstrom Rack",
+      "saksfifthavenue.com": "Saks Fifth Avenue",
+      "neimanmarcus.com": "Neiman Marcus",
+      "bergdorfgoodman.com": "Bergdorf Goodman",
+      "bloomingdales.com": "Bloomingdale's",
+      "macys.com": "Macy's",
+      "net-a-porter.com": "Net-a-Porter",
+      "mytheresa.com": "Mytheresa",
+      "farfetch.com": "Farfetch",
+      "ssense.com": "SSENSE",
+      "shopbop.com": "Shopbop",
+      "revolve.com": "Revolve",
+      "zappos.com": "Zappos"
+    };
+
+    function storeFor(host) {
+      if (/^(smile\.)?amazon\.[a-z.]+$/.test(host)) return "Amazon"; // amazon.com, amazon.co.uk, ...
+      const key = Object.keys(STORE_SITES).find(d => host === d || host.endsWith("." + d));
+      return key ? STORE_SITES[key] : "";
+    }
 
     // Designers recognised at the start of a multi-brand store's slug (e.g. Nordstrom), longest first
     const KNOWN_DESIGNERS = [
@@ -751,6 +779,7 @@
         name: titleCase(words),
         designer,
         category: guessCategory(words),
+        store: storeFor(host),
         size: size.toUpperCase().length <= 4 ? size.toUpperCase() : size
       };
     }
@@ -763,16 +792,20 @@
         note.textContent = "";
         return;
       }
-      const info = parseProductLink(link);
-      if (!info || (!info.name && !info.designer)) {
-        note.textContent = "Couldn't read details from this link. Fill them in below.";
-        return;
-      }
+      const parsed = parseProductLink(link);
+      const readable = parsed && (parsed.name || parsed.designer || parsed.store);
+      const info = readable ? parsed : {};
 
+      // Typed fields are left alone; autofilled ones follow the current link, going blank when it doesn't say
       const filled = [];
       const fill = (id, value, label) => {
         const field = $(id);
-        if (!value || field.dataset.typed) return;
+        if (field.dataset.typed) return;
+        if (!value) {
+          if (field.classList.contains("autofilled") && field.tagName !== "SELECT") field.value = "";
+          field.classList.remove("autofilled");
+          return;
+        }
         field.value = value;
         field.classList.add("autofilled");
         filled.push(label);
@@ -781,14 +814,19 @@
       fill("wish-designer", info.designer, "designer");
       fill("wish-category", info.category, "category");
       fill("wish-size", info.size, "size");
+      fill("wish-store", info.store, "store");
 
-      note.textContent = filled.length
-        ? `Filled in ${filled.join(", ")} from the link. Check them, then add price and photo.`
-        : "Nothing new to fill in from this link.";
+      if (!readable) {
+        note.textContent = "Couldn't read details from this link. Fill them in below.";
+      } else {
+        note.textContent = filled.length
+          ? `Filled in ${filled.join(", ")} from the link. Check them, then add price and photo.`
+          : "Nothing new to fill in from this link.";
+      }
     }
 
     // A field the user edits by hand is never overwritten by autofill
-    for (const id of ["wish-name", "wish-designer", "wish-category", "wish-size"]) {
+    for (const id of ["wish-name", "wish-designer", "wish-store", "wish-category", "wish-size"]) {
       $(id).addEventListener("input", () => {
         $(id).dataset.typed = "1";
         $(id).classList.remove("autofilled");
@@ -799,7 +837,7 @@
     function resetWishForm() {
       $("add-wish").reset();
       $("autofill-note").textContent = "";
-      for (const id of ["wish-name", "wish-designer", "wish-category", "wish-size"]) {
+      for (const id of ["wish-name", "wish-designer", "wish-store", "wish-category", "wish-size"]) {
         delete $(id).dataset.typed;
         $(id).classList.remove("autofilled");
       }

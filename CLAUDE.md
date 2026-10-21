@@ -22,7 +22,7 @@ state = {
     id, name,
     items: [{ id, name, designer, category, price | null, image }],
     looks: [{ id, itemIds: [itemId...], picked: boolean }],
-    wishlist: [{ id, name, designer, category, size, price | null, image, link }]   // pieces to buy
+    wishlist: [{ id, name, designer, category, size, store, price | null, image, link }]   // pieces to buy
   }]
 }
 ```
@@ -40,8 +40,10 @@ Categories: Top, Bottom, Dress, Outerwear, Shoes, Accessory.
 - **Autofill from product link** (`parseProductLink`): reads only the URL text, never fetches the page
   (a static page can't read other sites, and retailers block bots). Designer comes from `BRAND_SITES`
   (single-brand domains) or a `KNOWN_DESIGNERS` prefix of the slug (Nordstrom); name is the rest of the
-  slug; category from the last garment word (`CATEGORY_WORDS`); size from `?size=`. It fills only
-  fields the user hasn't typed in. Price, photo and stock status would need a server function.
+  slug; category from the last garment word (`CATEGORY_WORDS`); size from `?size=`; store from the
+  domain (`STORE_SITES`: brand sites, Nordstrom, Saks, Amazon, ...; unknown domain = blank). It fills only
+  fields the user hasn't typed in; autofilled fields follow the current link and go blank when it
+  doesn't say. Price, photo and stock status would need a server function.
 - The placeholder test pieces in the browser are intentional during design testing. Don't clear them.
 - User text is always rendered with `textContent`, never `innerHTML`.
 - Image links render only for `http(s)` URLs; a broken link falls back to a lettered placeholder tile.
