@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Designer Outfit Selector</title>
+  <style>
+    :root {
+      --bg: #faf7f5;
+      --card: #ffffff;
+      --text: #1f1a17;
+      --muted: #7a6f68;
+      --border: #ebe4df;
+      --accent: #8a3b5c;
+      --accent-soft: #f6e9ef;
+      --pick: #2f7a4f;
+      --danger: #c0392b;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #171312;
+        --card: #221d1b;
+        --text: #f4efec;
+        --muted: #a89c95;
+        --border: #3a322f;
+        --accent: #e08bb0;
+        --accent-soft: #3a2630;
+        --pick: #6fcf97;
+        --danger: #f17c6f;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 32px 16px 64px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    .wrap { max-width: 960px; margin: 0 auto; }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    h1 { margin: 0; font-size: 1.6rem; letter-spacing: 0.01em; }
+    h2 { margin: 0 0 12px; font-size: 1.1rem; }
+    h3 { margin: 16px 0 6px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+
+    .profile-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 760px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .full { grid-column: 1 / -1; }
+
+    input, select {
+      font: inherit;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+      min-width: 0;
+    }
+
+    button {
+      font: inherit;
+      cursor: pointer;
+      border-radius: 8px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+    }
+
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.icon { border: none; padding: 4px 8px; color: var(--muted); font-size: 1.15rem; line-height: 1; }
+    button.icon:hover { color: var(--danger); }
+
+    .add-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .add-form .wide { grid-column: 1 / -1; }
+
+    ul { list-style: none; margin: 0; padding: 0; }
+
+    .item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .thumb {
+      width: 44px;
+      height: 44px;
+      flex: none;
+      border-radius: 6px;
+      background: var(--accent-soft);
+      object-fit: cover;
+      display: grid;
+      place-items: center;
+      color: var(--accent);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .item-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .item-name { font-weight: 500; }
+    .meta { color: var(--muted); font-size: 0.85rem; }
+
+    .muted { color: var(--muted); font-size: 0.9rem; }
+
+    .look {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+
+    .look.picked { border-color: var(--pick); box-shadow: inset 0 0 0 1px var(--pick); }
+
+    .look-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--pick);
+      border: 1px solid var(--pick);
+      border-radius: 999px;
+      padding: 2px 8px;
+    }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+    .lookbook { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .lookbook .look { margin-top: 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Designer Outfit Selector</h1>
+      <div class="profile-bar">
+        <label for="profile-select" class="muted">Styling for</label>
+        <select id="profile-select"></select>
+        <button type="button" id="new-profile">+ New client</button>
+        <button type="button" id="delete-profile">Delete</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section>
+        <h2>Wardrobe</h2>
+        <form id="add-item" class="add-form">
+          <input class="wide" id="item-name" placeholder="Piece (e.g. Silk wrap blouse)" aria-label="Piece name" autocomplete="off">
+          <input id="item-designer" placeholder="Designer" aria-label="Designer" autocomplete="off">
+          <select id="item-category" aria-label="Category"></select>
+          <input id="item-price" type="number" min="0" step="0.01" placeholder="Price (optional)" aria-label="Price">
+          <input id="item-image" type="url" placeholder="Image link (optional)" aria-label="Image link">
+          <button class="primary wide" type="submit">Add piece</button>
+        </form>
+        <div id="wardrobe"></div>
+      </section>
+
+      <section>
+        <h2>Style me</h2>
+        <p class="muted" id="style-hint"></p>
+        <div id="suggestion"></div>
+        <div class="actions">
+          <button class="primary" type="button" id="style-me">Style me</button>
+          <button type="button" id="save-look" disabled>Save to lookbook</button>
+        </div>
+      </section>
+
+      <section class="full">
+        <h2 id="lookbook-title">Lookbook</h2>
+        <div id="lookbook"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = "outfit-selector";
+
+    const CATEGORIES = ["Top", "Bottom", "Dress", "Outerwear", "Shoes", "Accessory"];
+
+    const $ = id => document.getElementById(id);
+
+    let state = loadState();
+    let suggestion = null; // array of item ids for the current "Style me" result, not yet saved
+
+    function newId() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2);
+    }
+
+    function newProfile(name) {
+      return { id: newId(), name, items: [], looks: [] };
+    }
+
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        if (saved && saved.profiles && saved.profiles.length) return saved;
+      } catch {}
+      const me = newProfile("My wardrobe");
+      return { profiles: [me], currentId: me.id };
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function current() {
+      return state.profiles.find(p => p.id === state.currentId) || state.profiles[0];
+    }
+
+    function itemById(profile, id) {
+      return profile.items.find(item => item.id === id);
+    }
+
+    function pickRandom(list) {
+      return list[Math.floor(Math.random() * list.length)];
+    }
+
+    function formatPrice(n) {
+      return "$" + n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    }
+
+    // Builds one outfit: either a dress or a top + bottom, then one of each finishing category that has pieces
+    function styleOutfit(profile) {
+      const byCat = cat => profile.items.filter(item => item.category === cat);
+      const dresses = byCat("Dress");
+      const tops = byCat("Top");
+      const bottoms = byCat("Bottom");
+      const canSeparates = tops.length > 0 && bottoms.length > 0;
+
+      const outfit = [];
+      if (dresses.length && (!canSeparates || Math.random() < 0.5)) {
+        outfit.push(pickRandom(dresses));
+      } else if (canSeparates) {
+        outfit.push(pickRandom(tops), pickRandom(bottoms));
+      } else {
+        return null;
+      }
+
+      for (const cat of ["Outerwear", "Shoes", "Accessory"]) {
+        const options = byCat(cat);
+        if (options.length) outfit.push(pickRandom(options));
+      }
+      return outfit.map(item => item.id);
+    }
+
+    // Image only for http(s) links, otherwise a lettered placeholder
+    function thumb(item) {
+      const ph = document.createElement("div");
+      ph.className = "thumb";
+      ph.textContent = item.category.slice(0, 3);
+
+      if (item.image && /^https?:\/\//i.test(item.image)) {
+        const img = document.createElement("img");
+        img.className = "thumb";
+        img.src = item.image;
+        img.alt = item.name;
+        img.referrerPolicy = "no-referrer";
+        img.addEventListener("error", () => img.replaceWith(ph)); // dead link falls back to the placeholder
+        return img;
+      }
+      return ph;
+    }
+
+    function itemRow(item, onDelete) {
+      const li = document.createElement("li");
+      li.className = "item";
+
+      const text = document.createElement("div");
+      text.className = "item-text";
+      const name = document.createElement("div");
+      name.className = "item-name";
+      name.textContent = item.name;
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = [item.designer, item.category, item.price != null ? formatPrice(item.price) : ""]
+        .filter(Boolean).join(" · ");
+      text.append(name, meta);
+
+      li.append(thumb(item), text);
+
+      if (onDelete) {
+        const del = document.createElement("button");
+        del.className = "icon";
+        del.textContent = "×";
+        del.setAttribute("aria-label", "Remove " + item.name);
+        del.addEventListener("click", onDelete);
+        li.append(del);
+      }
+      return li;
+    }
+
+    function lookTotal(items) {
+      const priced = items.filter(item => item.price != null);
+      return priced.length ? formatPrice(priced.reduce((sum, item) => sum + item.price, 0)) : "";
+    }
+
+    function renderProfiles() {
+      const select = $("profile-select");
+      select.innerHTML = "";
+      for (const p of state.profiles) {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.name;
+        select.append(opt);
+      }
+      select.value = current().id;
+      $("delete-profile").disabled = state.profiles.length === 1;
+    }
+
+    function renderWardrobe() {
+      const profile = current();
+      const box = $("wardrobe");
+      box.innerHTML = "";
+
+      if (!profile.items.length) {
+        const p = document.createElement("p");
+        p.className = "muted";
+        p.textContent = "No pieces yet. Add a few tops, bottoms or dresses to get started.";
+        box.append(p);
+        return;
+      }
+
+      for (const cat of CATEGORIES) {
+        const items = profile.items.filter(item => item.category === cat);
+        if (!items.length) continue;
+        const h = document.createElement("h3");
+        h.textContent = cat;
+        const ul = document.createElement("ul");
+        for (const item of items) {
+          ul.append(itemRow(item, () => deleteItem(item.id)));
+        }
+        box.append(h, ul);
+      }
+    }
+
+    function renderSuggestion() {
+      const profile = current();
+      const box = $("suggestion");
+      box.innerHTML = "";
+
+      const ready = profile.items.some(i => i.category === "Dress") ||
+        (profile.items.some(i => i.category === "Top") && profile.items.some(i => i.category === "Bottom"));
+      $("style-me").disabled = !ready;
+      $("style-hint").textContent = ready
+        ? "Pick a random outfit from this wardrobe."
+        : "Add a dress, or a top and a bottom, to start styling.";
+
+      if (!suggestion) {
+        $("save-look").disabled = true;
+        return;
+      }
+
+      const items = suggestion.map(id => itemById(profile, id)).filter(Boolean);
+      const look = document.createElement("div");
+      look.className = "look";
+      const ul = document.createElement("ul");
+      items.forEach(item => ul.append(itemRow(item)));
+      look.append(ul);
+      const total = lookTotal(items);
+      if (total) {
+        const t = document.createElement("p");
+        t.className = "meta";
+        t.textContent = "Look total: " + total;
+        look.append(t);
+      }
+      box.append(look);
+      $("save-look").disabled = false;
+    }
+
+    function renderLookbook() {
+      const profile = current();
+      $("lookbook-title").textContent = profile.name + " — Lookbook";
+      const box = $("lookbook");
+      box.innerHTML = "";
+
+      if (!profile.looks.length) {
+        const p = document.createElement("p");
+        p.className = "muted";
+        p.textContent = "No saved looks yet. Use Style me, then save the ones worth showing.";
+        box.append(p);
+        return;
+      }
+
+      box.className = "lookbook";
+      profile.looks.forEach((look, index) => {
+        const items = look.itemIds.map(id => itemById(profile, id)).filter(Boolean);
+        const card = document.createElement("div");
+        card.className = "look" + (look.picked ? " picked" : "");
+
+        const head = document.createElement("div");
+        head.className = "look-head";
+        const title = document.createElement("strong");
+        title.textContent = "Look " + (index + 1);
+        head.append(title);
+        if (look.picked) {
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = "✓ Client's pick";
+          head.append(badge);
+        }
+
+        const ul = document.createElement("ul");
+        items.forEach(item => ul.append(itemRow(item)));
+
+        const actions = document.createElement("div");
+        actions.className = "actions";
+        const pick = document.createElement("button");
+        pick.type = "button";
+        pick.textContent = look.picked ? "Unmark pick" : "Mark as pick";
+        pick.addEventListener("click", () => {
+          look.picked = !look.picked;
+          saveState();
+          renderLookbook();
+        });
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "Remove look";
+        remove.addEventListener("click", () => {
+          profile.looks = profile.looks.filter(l => l.id !== look.id);
+          saveState();
+          renderLookbook();
+        });
+        actions.append(pick, remove);
+
+        card.append(head, ul);
+        const total = lookTotal(items);
+        if (total) {
+          const t = document.createElement("p");
+          t.className = "meta";
+          t.textContent = "Look total: " + total;
+          card.append(t);
+        }
+        card.append(actions);
+        box.append(card);
+      });
+    }
+
+    function renderAll() {
+      renderProfiles();
+      renderWardrobe();
+      renderSuggestion();
+      renderLookbook();
+    }
+
+    // Removing a piece also removes it from saved looks; a look left with nothing in it is dropped
+    function deleteItem(id) {
+      const profile = current();
+      profile.items = profile.items.filter(item => item.id !== id);
+      profile.looks = profile.looks
+        .map(look => ({ ...look, itemIds: look.itemIds.filter(x => x !== id) }))
+        .filter(look => look.itemIds.length);
+      if (suggestion && suggestion.includes(id)) suggestion = null;
+      saveState();
+      renderAll();
+    }
+
+    for (const cat of CATEGORIES) {
+      const opt = document.createElement("option");
+      opt.value = cat;
+      opt.textContent = cat;
+      $("item-category").append(opt);
+    }
+
+    $("add-item").addEventListener("submit", event => {
+      event.preventDefault();
+      const name = $("item-name").value.trim();
+      if (!name) {
+        $("item-name").focus();
+        return;
+      }
+      const priceText = $("item-price").value.trim();
+      const price = priceText === "" ? null : Number(priceText);
+      current().items.push({
+        id: newId(),
+        name,
+        designer: $("item-designer").value.trim(),
+        category: $("item-category").value,
+        price: Number.isFinite(price) && price >= 0 ? price : null,
+        image: $("item-image").value.trim()
+      });
+      saveState();
+      // Keep designer and category for quick entry of several pieces from the same label
+      $("item-name").value = "";
+      $("item-price").value = "";
+      $("item-image").value = "";
+      $("item-name").focus();
+      renderWardrobe();
+      renderSuggestion();
+    });
+
+    $("style-me").addEventListener("click", () => {
+      suggestion = styleOutfit(current());
+      renderSuggestion();
+    });
+
+    $("save-look").addEventListener("click", () => {
+      if (!suggestion) return;
+      current().looks.push({ id: newId(), itemIds: suggestion, picked: false });
+      suggestion = null;
+      saveState();
+      renderSuggestion();
+      renderLookbook();
+    });
+
+    $("profile-select").addEventListener("change", event => {
+      state.currentId = event.target.value;
+      suggestion = null;
+      saveState();
+      renderAll();
+    });
+
+    $("new-profile").addEventListener("click", () => {
+      const name = (prompt("Client name?") || "").trim();
+      if (!name) return;
+      const profile = newProfile(name);
+      state.profiles.push(profile);
+      state.currentId = profile.id;
+      suggestion = null;
+      saveState();
+      renderAll();
+    });
+
+    $("delete-profile").addEventListener("click", () => {
+      if (state.profiles.length === 1) return;
+      const profile = current();
+      if (!confirm(`Delete ${profile.name} and their whole wardrobe and lookbook?`)) return;
+      state.profiles = state.profiles.filter(p => p.id !== profile.id);
+      state.currentId = state.profiles[0].id;
+      suggestion = null;
+      saveState();
+      renderAll();
+    });
+
+    renderAll();
+  </script>
+</body>
+</html>
