@@ -66,6 +66,7 @@ export async function readProduct(target) {
     image: info.image || "",
     name: info.name || "",
     brand: info.brand || "",
+    store: info.siteName || "",
     price: info.price,
     currency: info.currency || "",
     available: info.available
@@ -147,6 +148,7 @@ export function extractProduct(html, pageUrl) {
     image,
     name: ld.name || cleanTitle(meta["og:title"]),
     brand: ld.brand || meta["product:brand"] || "",
+    siteName: cleanTitle(meta["og:site_name"]),
     price,
     currency: meta["product:price:currency"] || meta["og:price:currency"] || ld.currency || "",
     available: availability ? !/outofstock|out of stock|discontinued|soldout|sold out/.test(availability.replace(/\s/g, "")) : null

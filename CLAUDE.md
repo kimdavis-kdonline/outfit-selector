@@ -41,7 +41,7 @@ Categories: Top, Bottom, Dress, Outerwear, Shoes, Accessory.
   `/api/product`. A found photo follows the link; a pasted, uploaded, or already-saved photo is never
   replaced automatically, only by the user uploading or pasting another.
 - **Store support for the photo lookup**: works for The Row, Quince, Toteme and other Shopify-type stores;
-  Nordstrom (Akamai), Amazon, Max Mara, Lafayette 148 and Saks block it, and the app tells the user to
+  Nordstrom (Akamai), Anthropologie, Amazon, Max Mara, Lafayette 148 and Saks block it, and the app tells the user to
   paste the photo address or upload instead.
 - **View** asks `/api/product` first; if the product is gone (404, redirect home, or out of stock) it opens
   the store's home page instead.
@@ -55,7 +55,8 @@ Categories: Top, Bottom, Dress, Outerwear, Shoes, Accessory.
   then `/api/product` adds photo, price and missing name/designer. Designer comes from `BRAND_SITES`
   (single-brand domains) or a `KNOWN_DESIGNERS` prefix of the slug (Nordstrom); name is the rest of the
   slug; category from the last garment word (`CATEGORY_WORDS`); size from `?size=`; store from the
-  domain (`STORE_SITES`: brand sites, Nordstrom, Saks, Amazon, ...; unknown domain = blank). It fills only
+  domain (`STORE_SITES`: brand sites, Nordstrom, Saks, Amazon, Anthropologie, ...), else the page's
+  `og:site_name` from `/api/product`; otherwise blank. It fills only
   fields the user hasn't typed in; autofilled fields follow the current link and go blank when it
   doesn't say.
 - The placeholder test pieces in the browser are intentional during design testing. Don't clear them.

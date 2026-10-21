@@ -728,7 +728,36 @@
       "ssense.com": "SSENSE",
       "shopbop.com": "Shopbop",
       "revolve.com": "Revolve",
-      "zappos.com": "Zappos"
+      "zappos.com": "Zappos",
+      "anthropologie.com": "Anthropologie",
+      "freepeople.com": "Free People",
+      "urbanoutfitters.com": "Urban Outfitters",
+      "jcrew.com": "J.Crew",
+      "madewell.com": "Madewell",
+      "bananarepublic.gap.com": "Banana Republic",
+      "gap.com": "Gap",
+      "anntaylor.com": "Ann Taylor",
+      "loft.com": "Loft",
+      "everlane.com": "Everlane",
+      "aritzia.com": "Aritzia",
+      "thereformation.com": "Reformation",
+      "vince.com": "Vince",
+      "theory.com": "Theory",
+      "eileenfisher.com": "Eileen Fisher",
+      "sezane.com": "Sézane",
+      "cos.com": "COS",
+      "arket.com": "Arket",
+      "zara.com": "Zara",
+      "mango.com": "Mango",
+      "hm.com": "H&M",
+      "jcpenney.com": "JCPenney",
+      "target.com": "Target",
+      "dillards.com": "Dillard's",
+      "intermixonline.com": "Intermix",
+      "modaoperandi.com": "Moda Operandi",
+      "matchesfashion.com": "Matches",
+      "theoutnet.com": "The Outnet",
+      "therealreal.com": "The RealReal"
     };
 
     function storeFor(host) {
@@ -744,7 +773,10 @@
       "Agolde", "Khaite", "Staud", "Ganni", "Acne Studios", "Tory Burch", "Kate Spade New York",
       "Madewell", "Reformation", "Nili Lotan", "Joseph", "Equipment", "Mejuri", "Gucci",
       "Prada", "Saint Laurent", "Loewe", "Jil Sander", "Brunello Cucinelli", "Loro Piana", "Ugg",
-      "Nike", "Sam Edelman", "Stuart Weitzman", "Cole Haan", "Nordstrom", "Halogen", "Caslon"
+      "Nike", "Sam Edelman", "Stuart Weitzman", "Cole Haan", "Nordstrom", "Halogen", "Caslon",
+      // Store house labels (Anthropologie, Free People, Nordstrom, J.Crew) that start product links
+      "Maeve", "Pilcro", "Daily Practice by Anthropologie", "By Anthropologie", "Farm Rio", "Hutch",
+      "Sanctuary", "Free People", "Wayf", "Treasure & Bond", "BP", "Zella", "Open Edit", "J.Crew"
     ].sort((a, b) => b.length - a.length);
 
     // Last matching word wins, since the garment noun usually ends the name ("Shirt Dress" is a Dress)
@@ -909,7 +941,7 @@
         if (photo[prefix].source === "auto") setPhoto(prefix, "", "");
         setNote(prefix, "photo", info.available === false
           ? "This product page looks sold out or removed."
-          : `${store} doesn't share product photos with apps. Right-click the photo on the store page, choose "Copy Image Address", and paste it below, or upload a photo.`);
+          : `${store} blocks apps from reading its product pages, so the photo and price can't fill in. Type the price, and for the photo right-click it on the store page, choose "Copy Image Address", and paste it below, or upload a photo.`);
         return;
       }
 
@@ -921,6 +953,7 @@
       if (info.price != null && (!info.currency || info.currency === "USD") && fillField(prefix, "price", info.price)) got.push("price");
       if (!$(`${prefix}-name`).value && fillField(prefix, "name", info.name)) got.push("name");
       if (!$(`${prefix}-designer`).value && fillField(prefix, "designer", info.brand)) got.push("designer");
+      if (!$(`${prefix}-store`).value && fillField(prefix, "store", info.store)) got.push("store");
 
       const stock = info.available === false ? " Currently sold out." : "";
       const kept = wantsPhoto ? "" : " Kept your photo.";
