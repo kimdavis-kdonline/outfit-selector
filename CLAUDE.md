@@ -21,7 +21,8 @@ state = {
   profiles: [{
     id, name,
     items: [{ id, name, designer, category, price | null, image }],
-    looks: [{ id, itemIds: [itemId...], picked: boolean }]
+    looks: [{ id, itemIds: [itemId...], picked: boolean }],
+    wishlist: [{ id, name, designer, category, price | null, image, link }]   // pieces to buy
   }]
 }
 ```
@@ -33,6 +34,9 @@ Categories: Top, Bottom, Dress, Outerwear, Shoes, Accessory.
 - **Edit** loads a piece into the add form ("Save changes" / "Cancel"); edits show up everywhere the
   piece appears, including saved looks. Switching client cancels an edit.
 - Deleting a piece removes it from saved looks; a look left empty is dropped.
+- **Wishlist** pieces (per profile) are kept out of the wardrobe, so Style me never uses them.
+  "View" opens the product link (http(s) only) in a new tab. "Move to wardrobe" moves the piece,
+  details and link included, into `items`. Profiles saved before the wishlist existed get `wishlist: []` on load.
 - The placeholder test pieces in the browser are intentional during design testing. Don't clear them.
 - User text is always rendered with `textContent`, never `innerHTML`.
 - Image links render only for `http(s)` URLs; a broken link falls back to a lettered placeholder tile.

@@ -107,6 +107,18 @@
     button.edit { border: none; padding: 4px 8px; color: var(--muted); font-size: 0.85rem; text-decoration: underline; }
     button.edit:hover { color: var(--text); }
 
+    a.edit { padding: 4px 8px; color: var(--muted); font-size: 0.85rem; }
+    a.edit:hover { color: var(--text); }
+    button.small { padding: 4px 10px; font-size: 0.85rem; white-space: nowrap; }
+
+    .wish-form { grid-template-columns: repeat(4, 1fr); margin-bottom: 8px; }
+    .wish-form .wide { grid-column: span 2; }
+    .wish-form .primary.wide { grid-column: 1 / -1; }
+    @media (max-width: 760px) {
+      .wish-form { grid-template-columns: 1fr 1fr; }
+      .wish-form .wide { grid-column: 1 / -1; }
+    }
+
     #submit-item { grid-column: 1 / -1; }
     .add-form.editing #submit-item { grid-column: auto; }
     .add-form.editing { outline: 2px solid var(--accent); outline-offset: 8px; border-radius: 4px; }
@@ -144,7 +156,9 @@
       font-weight: 600;
     }
 
-    .item-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .item { flex-wrap: wrap; }
+    /* Text keeps at least 150px; on narrow screens the row's buttons wrap underneath instead of crushing it */
+    .item-text { flex: 1 1 150px; min-width: 0; overflow-wrap: anywhere; }
     .item-name { font-weight: 500; }
     .meta { color: var(--muted); font-size: 0.85rem; }
 
@@ -221,6 +235,22 @@
       </section>
 
       <section class="full">
+        <h2 id="wishlist-title">Wishlist</h2>
+        <p class="muted">Pieces to buy. Once one is bought, move it into the wardrobe.</p>
+        <form id="add-wish" class="add-form wish-form">
+          <input class="wide" id="wish-name" placeholder="Piece (e.g. Camel coat)" aria-label="Wishlist piece name" autocomplete="off">
+          <input id="wish-designer" placeholder="Designer" aria-label="Designer" autocomplete="off">
+          <select id="wish-category" aria-label="Category"></select>
+          <input id="wish-price" type="number" min="0" step="0.01" placeholder="Price (optional)" aria-label="Price">
+          <input id="wish-link" type="url" placeholder="Product link (e.g. Nordstrom page)" aria-label="Product link">
+          <input class="wide" id="wish-image" type="url" placeholder="Image link (optional)" aria-label="Image link">
+          <button class="primary wide" type="submit">Add to wishlist</button>
+        </form>
+        <ul id="wishlist"></ul>
+        <p class="meta" id="wishlist-total"></p>
+      </section>
+
+      <section class="full">
         <h2 id="lookbook-title">Lookbook</h2>
         <div id="lookbook"></div>
       </section>
@@ -243,13 +273,17 @@
     }
 
     function newProfile(name) {
-      return { id: newId(), name, items: [], looks: [] };
+      return { id: newId(), name, items: [], looks: [], wishlist: [] };
     }
 
     function loadState() {
       try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-        if (saved && saved.profiles && saved.profiles.length) return saved;
+        if (saved && saved.profiles && saved.profiles.length) {
+          // Profiles saved before the wishlist existed get an empty one
+          saved.profiles.forEach(p => { p.wishlist = p.wishlist || []; });
+          return saved;
+        }
       } catch {}
       const me = newProfile("My wardrobe");
       return { profiles: [me], currentId: me.id };
@@ -317,8 +351,9 @@
       return ph;
     }
 
-    // Wardrobe rows pass { onEdit, onDelete }; rows inside looks pass nothing and stay read-only
-    function itemRow(item, { onEdit, onDelete } = {}) {
+    // Wardrobe rows pass { onEdit, onDelete }, wishlist rows { showLink, onMove, onDelete };
+    // rows inside looks pass nothing and stay read-only
+    function itemRow(item, { onEdit, showLink, onMove, onDelete } = {}) {
       const li = document.createElement("li");
       li.className = "item" + (item.id === editingId ? " editing" : "");
 
@@ -343,6 +378,27 @@
         edit.setAttribute("aria-label", "Edit " + item.name);
         edit.addEventListener("click", onEdit);
         li.append(edit);
+      }
+
+      // Product link opens the store page in a new tab; only http(s) links are shown
+      if (showLink && item.link && /^https?:\/\//i.test(item.link)) {
+        const a = document.createElement("a");
+        a.className = "edit";
+        a.href = item.link;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = "View";
+        a.setAttribute("aria-label", "View " + item.name + " in store");
+        li.append(a);
+      }
+
+      if (onMove) {
+        const move = document.createElement("button");
+        move.className = "small";
+        move.type = "button";
+        move.textContent = "Move to wardrobe";
+        move.addEventListener("click", onMove);
+        li.append(move);
       }
 
       if (onDelete) {
@@ -502,10 +558,51 @@
       });
     }
 
+    function renderWishlist() {
+      const profile = current();
+      $("wishlist-title").textContent = profile.name + " — Wishlist";
+      const list = $("wishlist");
+      list.innerHTML = "";
+
+      if (!profile.wishlist.length) {
+        const li = document.createElement("li");
+        li.className = "muted";
+        li.textContent = "Nothing on the wishlist yet.";
+        list.append(li);
+      }
+
+      for (const wish of profile.wishlist) {
+        list.append(itemRow(wish, {
+          showLink: true,
+          onMove: () => moveToWardrobe(wish.id),
+          onDelete: () => {
+            profile.wishlist = profile.wishlist.filter(w => w.id !== wish.id);
+            saveState();
+            renderWishlist();
+          }
+        }));
+      }
+
+      const total = lookTotal(profile.wishlist);
+      $("wishlist-total").textContent = total ? "Wishlist total: " + total : "";
+    }
+
+    // Bought: the piece leaves the wishlist and joins the wardrobe, keeping its id, details and product link
+    function moveToWardrobe(id) {
+      const profile = current();
+      const wish = profile.wishlist.find(w => w.id === id);
+      if (!wish) return;
+      profile.wishlist = profile.wishlist.filter(w => w.id !== id);
+      profile.items.push(wish);
+      saveState();
+      renderAll();
+    }
+
     function renderAll() {
       renderProfiles();
       renderWardrobe();
       renderSuggestion();
+      renderWishlist();
       renderLookbook();
     }
 
@@ -527,7 +624,32 @@
       opt.value = cat;
       opt.textContent = cat;
       $("item-category").append(opt);
+      $("wish-category").append(opt.cloneNode(true));
     }
+
+    $("add-wish").addEventListener("submit", event => {
+      event.preventDefault();
+      const name = $("wish-name").value.trim();
+      if (!name) {
+        $("wish-name").focus();
+        return;
+      }
+      const priceText = $("wish-price").value.trim();
+      const price = priceText === "" ? null : Number(priceText);
+      current().wishlist.push({
+        id: newId(),
+        name,
+        designer: $("wish-designer").value.trim(),
+        category: $("wish-category").value,
+        price: Number.isFinite(price) && price >= 0 ? price : null,
+        image: $("wish-image").value.trim(),
+        link: $("wish-link").value.trim()
+      });
+      saveState();
+      $("add-wish").reset();
+      $("wish-name").focus();
+      renderWishlist();
+    });
 
     // Loads a piece into the add form; submitting then saves changes instead of adding
     function startEdit(item) {
