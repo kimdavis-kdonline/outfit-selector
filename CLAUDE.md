@@ -30,7 +30,10 @@ Categories: Top, Bottom, Dress, Outerwear, Shoes, Accessory.
 ## Rules the code follows
 - **Style me**: a Dress, or a Top + Bottom (50/50 when both are possible), then one Outerwear,
   Shoes and Accessory each if that category has pieces. Disabled until a dress or a top + bottom exists.
+- **Edit** loads a piece into the add form ("Save changes" / "Cancel"); edits show up everywhere the
+  piece appears, including saved looks. Switching client cancels an edit.
 - Deleting a piece removes it from saved looks; a look left empty is dropped.
+- The placeholder test pieces in the browser are intentional during design testing. Don't clear them.
 - User text is always rendered with `textContent`, never `innerHTML`.
 - Image links render only for `http(s)` URLs; a broken link falls back to a lettered placeholder tile.
 - Price is optional; look totals add up only the priced pieces.
