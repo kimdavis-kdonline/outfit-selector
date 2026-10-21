@@ -5,29 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Designer Outfit Selector</title>
   <style>
+    /* Smooth black on light cream; dark mode flips to cream on soft black */
     :root {
-      --bg: #faf7f5;
-      --card: #ffffff;
-      --text: #1f1a17;
-      --muted: #7a6f68;
-      --border: #ebe4df;
-      --accent: #8a3b5c;
-      --accent-soft: #f6e9ef;
-      --pick: #2f7a4f;
-      --danger: #c0392b;
+      --bg: #f6f1e7;
+      --card: #fdfaf3;
+      --text: #1a1918;
+      --muted: #77716a;
+      --border: #e6dfd1;
+      --accent: #1a1918;
+      --accent-text: #fdfaf3;
+      --accent-soft: #ece5d6;
+      --pick: #1a1918;
+      --danger: #9b3b2f;
     }
 
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #171312;
-        --card: #221d1b;
-        --text: #f4efec;
-        --muted: #a89c95;
-        --border: #3a322f;
-        --accent: #e08bb0;
-        --accent-soft: #3a2630;
-        --pick: #6fcf97;
-        --danger: #f17c6f;
+        --bg: #141413;
+        --card: #1e1d1b;
+        --text: #f3ecdd;
+        --muted: #a39d92;
+        --border: #34322e;
+        --accent: #f3ecdd;
+        --accent-text: #141413;
+        --accent-soft: #2b2926;
+        --pick: #f3ecdd;
+        --danger: #e08b7d;
       }
     }
 
@@ -97,7 +100,7 @@
       color: var(--text);
     }
 
-    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
     button.icon { border: none; padding: 4px 8px; color: var(--muted); font-size: 1.15rem; line-height: 1; }
     button.icon:hover { color: var(--danger); }
@@ -161,8 +164,8 @@
     .badge {
       font-size: 0.75rem;
       font-weight: 600;
-      color: var(--pick);
-      border: 1px solid var(--pick);
+      color: var(--accent-text);
+      background: var(--pick);
       border-radius: 999px;
       padding: 2px 8px;
     }
