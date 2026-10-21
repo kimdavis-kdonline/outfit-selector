@@ -216,11 +216,14 @@
       <section>
         <h2>Wardrobe</h2>
         <form id="add-item" class="add-form">
+          <input class="wide" id="item-link" type="url" placeholder="Product link (optional) — paste to fill in the details" aria-label="Product link">
+          <p class="wide autofill-note" id="item-note" aria-live="polite"></p>
           <input class="wide" id="item-name" placeholder="Piece (e.g. Silk wrap blouse)" aria-label="Piece name" autocomplete="off">
           <input id="item-designer" placeholder="Designer" aria-label="Designer" autocomplete="off">
+          <input id="item-store" placeholder="Store (optional)" aria-label="Store" autocomplete="off">
           <select id="item-category" aria-label="Category"></select>
-          <input id="item-price" type="number" min="0" step="0.01" placeholder="Price (optional)" aria-label="Price">
-          <input id="item-image" type="url" placeholder="Image link (optional)" aria-label="Image link">
+          <input id="item-size" placeholder="Size (optional)" aria-label="Size" autocomplete="off">
+          <input class="wide" id="item-price" type="number" min="0" step="0.01" placeholder="Price (optional)" aria-label="Price">
           <button class="primary" type="submit" id="submit-item">Add piece</button>
           <button type="button" id="cancel-edit" hidden>Cancel</button>
         </form>
@@ -242,7 +245,7 @@
         <p class="muted">Pieces to buy. Once one is bought, move it into the wardrobe.</p>
         <form id="add-wish" class="add-form wish-form">
           <input class="full-row" id="wish-link" type="url" placeholder="Paste a product link (Nordstrom, Max Mara, The Row…) to fill in the details" aria-label="Product link">
-          <p class="full-row autofill-note" id="autofill-note" aria-live="polite"></p>
+          <p class="full-row autofill-note" id="wish-note" aria-live="polite"></p>
           <input class="wide" id="wish-name" placeholder="Piece (e.g. Camel coat)" aria-label="Wishlist piece name" autocomplete="off">
           <input class="wide" id="wish-designer" placeholder="Designer" aria-label="Designer" autocomplete="off">
           <input class="wide" id="wish-store" placeholder="Store (e.g. Nordstrom, Amazon, brand site)" aria-label="Store" autocomplete="off">
@@ -457,7 +460,7 @@
         h.textContent = cat;
         const ul = document.createElement("ul");
         for (const item of items) {
-          ul.append(itemRow(item, { onEdit: () => startEdit(item), onDelete: () => deleteItem(item.id) }));
+          ul.append(itemRow(item, { onEdit: () => startEdit(item), showLink: true, onDelete: () => deleteItem(item.id) }));
         }
         box.append(h, ul);
       }
@@ -784,10 +787,14 @@
       };
     }
 
+    // Both forms autofill the same way; field ids are "<prefix>-<field>", e.g. "item-name", "wish-store"
+    const AUTOFILL_FIELDS = ["name", "designer", "store", "category", "size"];
+
     // Fills only fields the user hasn't typed in, and says what it did
-    function autofillFromLink() {
-      const note = $("autofill-note");
-      const link = $("wish-link").value.trim();
+    function autofillFromLink(prefix) {
+      const $f = field => $(`${prefix}-${field}`);
+      const note = $f("note");
+      const link = $f("link").value.trim();
       if (!link) {
         note.textContent = "";
         return;
@@ -798,59 +805,72 @@
 
       // Typed fields are left alone; autofilled ones follow the current link, going blank when it doesn't say
       const filled = [];
-      const fill = (id, value, label) => {
-        const field = $(id);
-        if (field.dataset.typed) return;
+      for (const key of AUTOFILL_FIELDS) {
+        const field = $f(key);
+        const value = info[key];
+        if (field.dataset.typed) continue;
         if (!value) {
           if (field.classList.contains("autofilled") && field.tagName !== "SELECT") field.value = "";
           field.classList.remove("autofilled");
-          return;
+          continue;
         }
         field.value = value;
         field.classList.add("autofilled");
-        filled.push(label);
-      };
-      fill("wish-name", info.name, "name");
-      fill("wish-designer", info.designer, "designer");
-      fill("wish-category", info.category, "category");
-      fill("wish-size", info.size, "size");
-      fill("wish-store", info.store, "store");
+        filled.push(key);
+      }
 
       if (!readable) {
         note.textContent = "Couldn't read details from this link. Fill them in below.";
       } else {
         note.textContent = filled.length
-          ? `Filled in ${filled.join(", ")} from the link. Check them, then add price and photo.`
+          ? `Filled in ${filled.join(", ")} from the link. Check them before saving.`
           : "Nothing new to fill in from this link.";
       }
     }
 
-    // A field the user edits by hand is never overwritten by autofill
-    for (const id of ["wish-name", "wish-designer", "wish-store", "wish-category", "wish-size"]) {
-      $(id).addEventListener("input", () => {
-        $(id).dataset.typed = "1";
-        $(id).classList.remove("autofilled");
-      });
+    // Clears autofill highlights and "typed" marks; with clearValues, empties the fields too
+    function resetAutofill(prefix, clearValues) {
+      $(`${prefix}-note`).textContent = "";
+      for (const key of AUTOFILL_FIELDS) {
+        const field = $(`${prefix}-${key}`);
+        delete field.dataset.typed;
+        field.classList.remove("autofilled");
+        if (clearValues && field.tagName !== "SELECT") field.value = "";
+      }
     }
-    $("wish-link").addEventListener("input", autofillFromLink);
+
+    for (const prefix of ["item", "wish"]) {
+      // A field the user edits by hand is never overwritten by autofill
+      for (const key of AUTOFILL_FIELDS) {
+        const field = $(`${prefix}-${key}`);
+        field.addEventListener("input", () => {
+          field.dataset.typed = "1";
+          field.classList.remove("autofilled");
+        });
+      }
+      $(`${prefix}-link`).addEventListener("input", () => autofillFromLink(prefix));
+    }
 
     function resetWishForm() {
       $("add-wish").reset();
-      $("autofill-note").textContent = "";
-      for (const id of ["wish-name", "wish-designer", "wish-store", "wish-category", "wish-size"]) {
-        delete $(id).dataset.typed;
-        $(id).classList.remove("autofilled");
-      }
+      resetAutofill("wish");
     }
 
     // Loads a piece into the add form; submitting then saves changes instead of adding
     function startEdit(item) {
       editingId = item.id;
+      resetAutofill("item");
+      $("item-link").value = item.link || "";
       $("item-name").value = item.name;
       $("item-designer").value = item.designer;
+      $("item-store").value = item.store || "";
       $("item-category").value = item.category;
+      $("item-size").value = item.size || "";
       $("item-price").value = item.price != null ? item.price : "";
-      $("item-image").value = item.image;
+      // The piece's saved details count as typed, so pasting a new link won't overwrite them
+      for (const key of AUTOFILL_FIELDS) {
+        if ($(`item-${key}`).value) $(`item-${key}`).dataset.typed = "1";
+      }
       $("submit-item").textContent = "Save changes";
       $("cancel-edit").hidden = false;
       $("add-item").classList.add("editing");
@@ -862,6 +882,7 @@
     function stopEdit() {
       editingId = null;
       $("add-item").reset();
+      resetAutofill("item");
       $("submit-item").textContent = "Add piece";
       $("cancel-edit").hidden = true;
       $("add-item").classList.remove("editing");
@@ -881,12 +902,15 @@
       }
       const priceText = $("item-price").value.trim();
       const price = priceText === "" ? null : Number(priceText);
+      // No image field here any more: an edit keeps a piece's existing photo (e.g. one moved from the wishlist)
       const fields = {
         name,
         designer: $("item-designer").value.trim(),
+        store: $("item-store").value.trim(),
         category: $("item-category").value,
+        size: $("item-size").value.trim(),
         price: Number.isFinite(price) && price >= 0 ? price : null,
-        image: $("item-image").value.trim()
+        link: $("item-link").value.trim()
       };
 
       const editing = editingId && itemById(current(), editingId);
@@ -894,12 +918,16 @@
         Object.assign(editing, fields);
         stopEdit();
       } else {
-        current().items.push({ id: newId(), ...fields });
+        current().items.push({ id: newId(), image: "", ...fields });
         // Keep designer and category for quick entry of several pieces from the same label
-        $("item-name").value = "";
+        const designer = $("item-designer").value;
+        const category = $("item-category").value;
+        resetAutofill("item", true);
+        $("item-link").value = "";
         $("item-price").value = "";
-        $("item-image").value = "";
-        $("item-name").focus();
+        $("item-designer").value = designer;
+        $("item-category").value = category;
+        $("item-link").focus();
       }
       saveState();
       // Re-render everything so an edited name or photo also updates the suggestion and saved looks
