@@ -114,6 +114,20 @@
     .wish-form { grid-template-columns: repeat(4, 1fr); margin-bottom: 8px; }
     .wish-form .wide { grid-column: span 2; }
     .wish-form .primary.wide, .wish-form .full-row { grid-column: 1 / -1; }
+    .photo-field { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; }
+    .photo-field input { flex: 1; }
+    .photo-preview { flex: none; width: 56px; height: 56px; }
+    .photo-preview .thumb { width: 56px; height: 56px; }
+    .upload-btn {
+      flex: none;
+      cursor: pointer;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      white-space: nowrap;
+    }
+    .upload-btn:focus-within { outline: 2px solid var(--accent); }
+
     .autofill-note { margin: -2px 0 2px; font-size: 0.85rem; color: var(--muted); }
     .autofill-note:empty { display: none; }
     .autofilled { box-shadow: inset 0 0 0 1px var(--accent); }
@@ -224,6 +238,12 @@
           <select id="item-category" aria-label="Category"></select>
           <input id="item-size" placeholder="Size (optional)" aria-label="Size" autocomplete="off">
           <input class="wide" id="item-price" type="number" min="0" step="0.01" placeholder="Price (optional)" aria-label="Price">
+          <div class="photo-field">
+            <div class="photo-preview" id="item-photo-preview"></div>
+            <input id="item-image" type="url" placeholder="Photo link (fills in from the product link)" aria-label="Photo link">
+            <label class="upload-btn">Upload photo<input type="file" accept="image/*" id="item-upload" hidden></label>
+            <button type="button" class="edit" id="item-photo-remove" hidden>Remove</button>
+          </div>
           <button class="primary" type="submit" id="submit-item">Add piece</button>
           <button type="button" id="cancel-edit" hidden>Cancel</button>
         </form>
@@ -252,7 +272,12 @@
           <select id="wish-category" aria-label="Category"></select>
           <input id="wish-size" placeholder="Size (optional)" aria-label="Size" autocomplete="off">
           <input class="wide" id="wish-price" type="number" min="0" step="0.01" placeholder="Price (optional)" aria-label="Price">
-          <input class="wide" id="wish-image" type="url" placeholder="Image link (optional)" aria-label="Image link">
+          <div class="photo-field">
+            <div class="photo-preview" id="wish-photo-preview"></div>
+            <input id="wish-image" type="url" placeholder="Photo link (fills in from the product link)" aria-label="Photo link">
+            <label class="upload-btn">Upload photo<input type="file" accept="image/*" id="wish-upload" hidden></label>
+            <button type="button" class="edit" id="wish-photo-remove" hidden>Remove</button>
+          </div>
           <button class="primary wide" type="submit">Add to wishlist</button>
         </form>
         <ul id="wishlist"></ul>
@@ -299,7 +324,12 @@
     }
 
     function saveState() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch {
+        // Uploaded photos are the big items; browsers allow roughly 5 MB per site
+        alert("Couldn't save: this browser's storage for the app is full. Try removing some uploaded photos.");
+      }
     }
 
     function current() {
@@ -342,13 +372,16 @@
       return outfit.map(item => item.id);
     }
 
-    // Image only for http(s) links, otherwise a lettered placeholder
+    // A photo from an http(s) link or the user's own upload (stored as a JPEG data URL)
+    const isPhotoSrc = src => /^https?:\/\//i.test(src || "") || /^data:image\/(jpeg|png|webp|gif);base64,/i.test(src || "");
+
+    // Photo if there is one, otherwise a lettered placeholder
     function thumb(item) {
       const ph = document.createElement("div");
       ph.className = "thumb";
       ph.textContent = item.category.slice(0, 3);
 
-      if (item.image && /^https?:\/\//i.test(item.image)) {
+      if (isPhotoSrc(item.image)) {
         const img = document.createElement("img");
         img.className = "thumb";
         img.src = item.image;
@@ -399,6 +432,7 @@
         a.rel = "noopener noreferrer";
         a.textContent = "View";
         a.setAttribute("aria-label", "View " + item.name + " in store");
+        a.addEventListener("click", event => viewProduct(event, item.link));
         li.append(a);
       }
 
@@ -654,7 +688,7 @@
         size: $("wish-size").value.trim(),
         store: $("wish-store").value.trim(),
         price: Number.isFinite(price) && price >= 0 ? price : null,
-        image: $("wish-image").value.trim(),
+        image: photo.wish.src,
         link: $("wish-link").value.trim()
       });
       saveState();
@@ -788,55 +822,169 @@
     }
 
     // Both forms autofill the same way; field ids are "<prefix>-<field>", e.g. "item-name", "wish-store"
-    const AUTOFILL_FIELDS = ["name", "designer", "store", "category", "size"];
+    const AUTOFILL_FIELDS = ["name", "designer", "store", "category", "size", "price"];
 
-    // Fills only fields the user hasn't typed in, and says what it did
+    // Two-part status line under the link: what the link text gave, and what the photo lookup found
+    const notes = { item: { local: "", photo: "" }, wish: { local: "", photo: "" } };
+    function setNote(prefix, part, text) {
+      notes[prefix][part] = text;
+      $(`${prefix}-note`).textContent = [notes[prefix].local, notes[prefix].photo].filter(Boolean).join(" ");
+    }
+
+    // Typed fields are left alone; autofilled ones follow the current link, going blank when it doesn't say.
+    // Returns true when the field was filled.
+    function fillField(prefix, key, value) {
+      const field = $(`${prefix}-${key}`);
+      if (field.dataset.typed) return false;
+      if (value == null || value === "") {
+        if (field.classList.contains("autofilled") && field.tagName !== "SELECT") field.value = "";
+        field.classList.remove("autofilled");
+        return false;
+      }
+      field.value = value;
+      field.classList.add("autofilled");
+      return true;
+    }
+
+    // Step 1, instant: read what the link text itself says
     function autofillFromLink(prefix) {
-      const $f = field => $(`${prefix}-${field}`);
-      const note = $f("note");
-      const link = $f("link").value.trim();
+      const link = $(`${prefix}-link`).value.trim();
       if (!link) {
-        note.textContent = "";
+        setNote(prefix, "local", "");
+        setNote(prefix, "photo", "");
         return;
       }
       const parsed = parseProductLink(link);
       const readable = parsed && (parsed.name || parsed.designer || parsed.store);
       const info = readable ? parsed : {};
 
-      // Typed fields are left alone; autofilled ones follow the current link, going blank when it doesn't say
-      const filled = [];
-      for (const key of AUTOFILL_FIELDS) {
-        const field = $f(key);
-        const value = info[key];
-        if (field.dataset.typed) continue;
-        if (!value) {
-          if (field.classList.contains("autofilled") && field.tagName !== "SELECT") field.value = "";
-          field.classList.remove("autofilled");
-          continue;
-        }
-        field.value = value;
-        field.classList.add("autofilled");
-        filled.push(key);
-      }
-
+      const filled = AUTOFILL_FIELDS.filter(key => fillField(prefix, key, info[key]));
       if (!readable) {
-        note.textContent = "Couldn't read details from this link. Fill them in below.";
+        setNote(prefix, "local", "Couldn't read details from this link. Fill them in below.");
       } else {
-        note.textContent = filled.length
+        setNote(prefix, "local", filled.length
           ? `Filled in ${filled.join(", ")} from the link. Check them before saving.`
-          : "Nothing new to fill in from this link.";
+          : "Nothing new to fill in from this link.");
       }
+      if (parsed) scheduleLookup(prefix, link);
     }
 
-    // Clears autofill highlights and "typed" marks; with clearValues, empties the fields too
+    // ---- Step 2: product photo and price from the store's page, via /api/product ----
+
+    const lookupTimers = {};
+    const lookupSeq = { item: 0, wish: 0 };
+
+    // The lookup only exists when the app runs on Vercel or `npm run dev`
+    function fetchProductInfo(link, timeoutMs = 10000) {
+      return fetch("/api/product?url=" + encodeURIComponent(link), { signal: AbortSignal.timeout(timeoutMs) })
+        .then(r => r.headers.get("content-type")?.includes("json") ? r.json() : Promise.reject(new Error("no lookup")));
+    }
+
+    function scheduleLookup(prefix, link) {
+      clearTimeout(lookupTimers[prefix]);
+      const seq = ++lookupSeq[prefix];
+      // Wait until pasting/typing pauses, so a half-typed link isn't looked up
+      lookupTimers[prefix] = setTimeout(() => lookUpProduct(prefix, link, seq), 500);
+    }
+
+    async function lookUpProduct(prefix, link, seq) {
+      const wantsPhoto = ["", "auto"].includes(photo[prefix].source);
+      setNote(prefix, "photo", wantsPhoto ? "Looking up the product photo…" : "Checking the product page…");
+
+      let info;
+      try {
+        info = await fetchProductInfo(link);
+      } catch {
+        info = { error: true };
+      }
+      if (seq !== lookupSeq[prefix]) return; // the link changed while we were waiting
+
+      const store = $(`${prefix}-store`).value || "This store";
+      if (info.error) {
+        if (photo[prefix].source === "auto") setPhoto(prefix, "", "");
+        setNote(prefix, "photo", "Photo lookup isn't available here. Paste a photo link or upload a photo.");
+        return;
+      }
+      if (!info.found) {
+        if (photo[prefix].source === "auto") setPhoto(prefix, "", "");
+        setNote(prefix, "photo", info.available === false
+          ? "This product page looks sold out or removed."
+          : `${store} doesn't share product photos with apps. Right-click the photo on the store page, choose "Copy Image Address", and paste it below, or upload a photo.`);
+        return;
+      }
+
+      const got = [];
+      if (wantsPhoto && info.image) {
+        setPhoto(prefix, info.image, "auto");
+        got.push("photo");
+      }
+      if (info.price != null && (!info.currency || info.currency === "USD") && fillField(prefix, "price", info.price)) got.push("price");
+      if (!$(`${prefix}-name`).value && fillField(prefix, "name", info.name)) got.push("name");
+      if (!$(`${prefix}-designer`).value && fillField(prefix, "designer", info.brand)) got.push("designer");
+
+      const stock = info.available === false ? " Currently sold out." : "";
+      const kept = wantsPhoto ? "" : " Kept your photo.";
+      setNote(prefix, "photo", ((got.length ? `Found the ${got.join(", ")} on the store page.` : "") + kept + stock).trim());
+    }
+
+    // ---- Photo field: link, upload, or found by the lookup ----
+    // source: "" none, "auto" from the lookup (follows the link), "link" pasted by the user,
+    // "upload" the user's own photo, "kept" the saved photo of a piece being edited.
+    // Only "" and "auto" are ever replaced automatically.
+    const photo = { item: { src: "", source: "" }, wish: { src: "", source: "" } };
+
+    function setPhoto(prefix, src, source) {
+      photo[prefix] = { src, source: src ? source : "" };
+      const input = $(`${prefix}-image`);
+      input.value = src.startsWith("data:") ? "" : src;
+      input.placeholder = src.startsWith("data:") ? "Your uploaded photo" : "Photo link (fills in from the product link)";
+      input.classList.toggle("autofilled", source === "auto" && Boolean(src));
+      renderPhotoPreview(prefix);
+    }
+
+    function renderPhotoPreview(prefix) {
+      const { src } = photo[prefix];
+      const box = $(`${prefix}-photo-preview`);
+      box.innerHTML = "";
+      box.append(thumb({ image: src, name: "Photo preview", category: "Photo" }));
+      $(`${prefix}-photo-remove`).hidden = !src;
+    }
+
+    // Shrinks an uploaded photo to at most 600px and JPEG, so it fits in the browser's storage
+    function compressPhoto(file) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, 600 / Math.max(img.naturalWidth, img.naturalHeight));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.naturalWidth * scale);
+          canvas.height = Math.round(img.naturalHeight * scale);
+          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(url);
+          resolve(canvas.toDataURL("image/jpeg", 0.82));
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error("Couldn't read that image"));
+        };
+        img.src = url;
+      });
+    }
+
+    // Clears autofill highlights, "typed" marks and the photo; with clearValues, empties the fields too
     function resetAutofill(prefix, clearValues) {
-      $(`${prefix}-note`).textContent = "";
+      clearTimeout(lookupTimers[prefix]);
+      lookupSeq[prefix]++;
+      setNote(prefix, "local", "");
+      setNote(prefix, "photo", "");
       for (const key of AUTOFILL_FIELDS) {
         const field = $(`${prefix}-${key}`);
         delete field.dataset.typed;
         field.classList.remove("autofilled");
         if (clearValues && field.tagName !== "SELECT") field.value = "";
       }
+      setPhoto(prefix, "", "");
     }
 
     for (const prefix of ["item", "wish"]) {
@@ -849,11 +997,49 @@
         });
       }
       $(`${prefix}-link`).addEventListener("input", () => autofillFromLink(prefix));
+
+      $(`${prefix}-image`).addEventListener("input", event => {
+        const src = event.target.value.trim();
+        photo[prefix] = { src, source: src ? "link" : "" };
+        event.target.classList.remove("autofilled");
+        renderPhotoPreview(prefix);
+      });
+      $(`${prefix}-upload`).addEventListener("change", async event => {
+        const file = event.target.files[0];
+        event.target.value = "";
+        if (!file) return;
+        try {
+          setPhoto(prefix, await compressPhoto(file), "upload");
+        } catch {
+          alert("That file couldn't be read as a photo. Try a JPEG or PNG.");
+        }
+      });
+      $(`${prefix}-photo-remove`).addEventListener("click", () => setPhoto(prefix, "", ""));
+      renderPhotoPreview(prefix);
     }
 
     function resetWishForm() {
       $("add-wish").reset();
       resetAutofill("wish");
+    }
+
+    // View checks the product page first: if it's gone, open the store's home page instead
+    async function viewProduct(event, link) {
+      event.preventDefault();
+      const tab = window.open("about:blank", "_blank"); // opened now, while the click still allows a new tab
+      let target = link;
+      try {
+        const info = await fetchProductInfo(link, 5000);
+        if (info.available === false) target = new URL(link).origin + "/";
+      } catch {
+        // No lookup available: just open the product link
+      }
+      if (tab) {
+        tab.opener = null;
+        tab.location.href = target;
+      } else {
+        window.open(target, "_blank", "noopener");
+      }
     }
 
     // Loads a piece into the add form; submitting then saves changes instead of adding
@@ -871,6 +1057,7 @@
       for (const key of AUTOFILL_FIELDS) {
         if ($(`item-${key}`).value) $(`item-${key}`).dataset.typed = "1";
       }
+      setPhoto("item", item.image || "", "kept");
       $("submit-item").textContent = "Save changes";
       $("cancel-edit").hidden = false;
       $("add-item").classList.add("editing");
@@ -902,8 +1089,8 @@
       }
       const priceText = $("item-price").value.trim();
       const price = priceText === "" ? null : Number(priceText);
-      // No image field here any more: an edit keeps a piece's existing photo (e.g. one moved from the wishlist)
       const fields = {
+        image: photo.item.src,
         name,
         designer: $("item-designer").value.trim(),
         store: $("item-store").value.trim(),
